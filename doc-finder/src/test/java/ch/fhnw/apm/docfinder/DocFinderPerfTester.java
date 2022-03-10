@@ -8,7 +8,8 @@ import java.util.stream.DoubleStream;
 public class DocFinderPerfTester {
 
     private static final int REPETITIONS = 30;
-    public static final String SEARCH_TEXT = "woman friend cat";
+    public static final String SEARCH_TEXT = "woman friend cat elephant";
+//    public static final String SEARCH_TEXT = "woman";
 
     public static void main(String[] args) throws IOException {
         var booksDir = Path.of("perf-tests/books").toAbsolutePath();

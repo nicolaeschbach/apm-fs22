@@ -6,6 +6,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static java.util.Comparator.comparing;
@@ -26,14 +28,30 @@ public class DocFinder {
 
     public List<Result> findDocs(String searchText) throws IOException {
         var allDocs = collectDocs();
-
-        var results = new ArrayList<Result>();
+        var executores = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        var results = Collections.synchronizedList(new ArrayList<Result>());
         for (var doc : allDocs) {
-            var res = findInDoc(searchText, doc);
-            if (res.totalHits() > 0) {
-                results.add(res);
-            }
+            executores.execute(() -> {
+                        Result res = null;
+                        try {
+                            res = findInDoc(searchText, doc);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                        if (res.totalHits() > 0) {
+                            results.add(res);
+
+                        }
+                    }
+            );
         }
+        executores.shutdown();
+        try {
+            executores.awaitTermination(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
 
         results.sort(comparing(Result::getRelevance, reverseOrder()));
 
