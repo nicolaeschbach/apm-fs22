@@ -6,6 +6,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -22,35 +24,41 @@ public class DocFinder {
     private long sizeLimit = 1_000_000_000; // 1 GB
     private boolean ignoreCase = true;
 
+    private final ExecutorService pool;
+
     public DocFinder(Path rootDir) {
+        this(rootDir, Runtime.getRuntime().availableProcessors());
+    }
+
+
+    public DocFinder(Path rootDir, int parallelism) {
         this.rootDir = requireNonNull(rootDir);
+        pool = Executors.newFixedThreadPool(parallelism, r -> {
+            var thread = new Thread(r);
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     public List<Result> findDocs(String searchText) throws IOException {
         var allDocs = collectDocs();
-        var executores = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         var results = Collections.synchronizedList(new ArrayList<Result>());
-        for (var doc : allDocs) {
-            executores.execute(() -> {
-                        Result res = null;
-                        try {
-                            res = findInDoc(searchText, doc);
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                        if (res.totalHits() > 0) {
-                            results.add(res);
 
-                        }
-                    }
-            );
+        var tasks = new ArrayList<Callable<Void>>();
+        for (var doc : allDocs) {
+           tasks.add(() -> {
+               var res = findInDoc(searchText, doc);
+               if (res.totalHits() > 0) {
+                   results.add(res);
+               }
+               return null;
+           });
         }
-        executores.shutdown();
-        try {
-            executores.awaitTermination(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+       try {
+           pool.invokeAll(tasks);
+       } catch (InterruptedException e ) {
+           throw new AssertionError(e);
+       }
 
 
         results.sort(comparing(Result::getRelevance, reverseOrder()));
